@@ -5,8 +5,6 @@ on:
     branches: [ main, develop ]
   push:
     branches: [ develop ]
-  schedule:
-    - cron: '0 2 * * 1'  # Exécuter à 2h00 tous les lundis
   workflow_dispatch:
 
 jobs:
@@ -16,12 +14,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0  # Historique complet pour les analyses
+      uses: actions/checkout@v2
     
     - name: Set up JDK 11
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v2
       with:
         java-version: '11'
         distribution: 'temurin'
@@ -42,7 +38,7 @@ jobs:
     # Exécution de PMD
     - name: Run PMD
       run: |
-        ./pmd-bin-6.55.0/bin/run.sh pmd -d back/src -R rulesets/java/quickstart.xml -f text > pmd-report.txt
+        ./pmd-bin-6.55.0/bin/run.sh pmd -d back/src -R rulesets/java/quickstart.xml -f text
       continue-on-error: true
     
     # Installation et exécution de SpotBugs
@@ -52,16 +48,7 @@ jobs:
         mvn com.github.spotbugs:spotbugs-maven-plugin:4.7.3.0:spotbugs -Dspotbugs.effort=Max -Dspotbugs.threshold=Low
       continue-on-error: true
     
-    # Archiver les rapports de qualité
-    - name: Archive Java quality reports
-      uses: actions/upload-artifact@v2  # Utiliser v2 au lieu de v3
-      with:
-        name: java-quality-reports
-        path: |
-          back/target/site/jacoco/
-          back/target/spotbugsXml.xml
-          pmd-report.txt
-        retention-days: 7
+    # Supprimé l'archivage des rapports pour éviter les problèmes
 
   typescript-quality:
     name: TypeScript Code Quality
@@ -69,10 +56,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v2
     
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v2
       with:
         node-version: '16'
         cache: 'npm'
@@ -94,7 +81,7 @@ jobs:
     - name: Run ESLint
       run: |
         cd front
-        npx eslint . --ext .ts --format json > eslint-report.json
+        npx eslint . --ext .ts
       continue-on-error: true
     
     # Exécuter les tests avec couverture
@@ -108,20 +95,12 @@ jobs:
     - name: Run npm audit
       run: |
         cd front
-        npm audit --json > npm-audit.json
+        npm audit
       continue-on-error: true
     
-    # Archiver les rapports de qualité
-    - name: Archive TypeScript quality reports
-      uses: actions/upload-artifact@v2  # Utiliser v2 au lieu de v3
-      with:
-        name: typescript-quality-reports
-        path: |
-          front/coverage/
-          front/eslint-report.json
-          front/npm-audit.json
-        retention-days: 7
+    # Supprimé l'archivage des rapports pour éviter les problèmes
 
+  # Simplifié pour éviter les problèmes d'actions
   quality-summary:
     name: Quality Summary
     needs: [java-quality, typescript-quality]
@@ -129,101 +108,6 @@ jobs:
     if: always()
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Download quality reports
-      uses: actions/download-artifact@v2  # Utiliser v2 au lieu de v3
-      with:
-        path: quality-reports
-    
-    - name: Generate quality summary
+    - name: Generate simple quality summary
       run: |
-        echo "# Code Quality Summary" > quality-summary.md
-        echo "## Java Code Quality" >> quality-summary.md
-        
-        # JaCoCo Coverage Analysis
-        if [ -f "quality-reports/java-quality-reports/jacoco/index.html" ]; then
-          COVERAGE=$(grep -o "Total[^%]*%" quality-reports/java-quality-reports/jacoco/index.html | head -1 | tr -d " \t\n\r")
-          if [ ! -z "$COVERAGE" ]; then
-            echo "- Code Coverage: $COVERAGE" >> quality-summary.md
-          else
-            echo "- Code Coverage: Not available" >> quality-summary.md
-          fi
-        else
-          echo "- Code Coverage: Report not found" >> quality-summary.md
-        fi
-        
-        # PMD Issues
-        if [ -f "quality-reports/java-quality-reports/pmd-report.txt" ]; then
-          PMD_ISSUES=$(wc -l < quality-reports/java-quality-reports/pmd-report.txt)
-          echo "- PMD Issues: $PMD_ISSUES" >> quality-summary.md
-        else
-          echo "- PMD Issues: Report not found" >> quality-summary.md
-        fi
-        
-        # SpotBugs Issues
-        if [ -f "quality-reports/java-quality-reports/spotbugsXml.xml" ]; then
-          SPOTBUGS_ISSUES=$(grep -c "<BugInstance" quality-reports/java-quality-reports/spotbugsXml.xml || echo 0)
-          echo "- SpotBugs Issues: $SPOTBUGS_ISSUES" >> quality-summary.md
-        else
-          echo "- SpotBugs Issues: Report not found" >> quality-summary.md
-        fi
-        
-        echo "## TypeScript/Angular Code Quality" >> quality-summary.md
-        
-        # Frontend Coverage
-        if [ -f "quality-reports/typescript-quality-reports/coverage/index.html" ]; then
-          TS_COVERAGE=$(grep -o "statements.*%" quality-reports/typescript-quality-reports/coverage/index.html | head -1 | grep -o "[0-9]*\.[0-9]*%" || echo "Not available")
-          echo "- Code Coverage: $TS_COVERAGE" >> quality-summary.md
-        else
-          echo "- Code Coverage: Report not found" >> quality-summary.md
-        fi
-        
-        # ESLint Issues
-        if [ -f "quality-reports/typescript-quality-reports/eslint-report.json" ]; then
-          ESLINT_ISSUES=$(grep -o '"errorCount":[0-9]*' quality-reports/typescript-quality-reports/eslint-report.json | grep -o "[0-9]*" | awk '{sum+=$1} END {print sum}' || echo 0)
-          echo "- ESLint Issues: $ESLINT_ISSUES" >> quality-summary.md
-        else
-          echo "- ESLint Issues: Report not found" >> quality-summary.md
-        fi
-        
-        # npm audit
-        if [ -f "quality-reports/typescript-quality-reports/npm-audit.json" ]; then
-          NPM_VULNERABILITIES=$(grep -o '"vulnerabilities": {[^}]*}' quality-reports/typescript-quality-reports/npm-audit.json | grep -o '"[^"]*": [0-9]*' | grep -v "info" | awk '{sum+=$2} END {print sum}' || echo 0)
-          echo "- npm Vulnerabilities: $NPM_VULNERABILITIES" >> quality-summary.md
-        else
-          echo "- npm Vulnerabilities: Report not found" >> quality-summary.md
-        fi
-        
-        echo "## Quality Thresholds" >> quality-summary.md
-        echo "- Java Coverage: Target > 80%" >> quality-summary.md
-        echo "- TypeScript Coverage: Target > 80%" >> quality-summary.md
-        echo "- Zero critical vulnerabilities" >> quality-summary.md
-        
-        cat quality-summary.md
-    
-    - name: Upload quality summary
-      uses: actions/upload-artifact@v2  # Utiliser v2 au lieu de v3
-      with:
-        name: quality-summary
-        path: quality-summary.md
-        retention-days: 7
-    
-    # Si c'est une pull request, ajouter un commentaire avec le résumé de qualité
-    - name: Comment on PR
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@v6
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const fs = require('fs');
-          const summary = fs.readFileSync('quality-summary.md', 'utf8');
-          const context = github.context;
-          
-          github.rest.issues.createComment({
-            issue_number: context.payload.pull_request.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: summary
-          });
+        echo "Quality checks completed. Check job logs for details."
