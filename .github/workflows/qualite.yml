@@ -4,11 +4,11 @@ on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  sonar-analysis:
+  sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
     
@@ -24,29 +24,6 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
     
-    - name: Set up Node.js
-      uses: actions/setup-node@v2
-      with:
-        node-version: '16'
-    
-    - name: Install Frontend Dependencies
-      run: |
-        cd front
-        npm install
-    
-    - name: Run Frontend Tests with Coverage
-      run: |
-        cd front
-        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
-      continue-on-error: true
-    
-    - name: Cache SonarCloud packages
-      uses: actions/cache@v2
-      with:
-        path: ~/.sonar/cache
-        key: ${{ runner.os }}-sonar
-        restore-keys: ${{ runner.os }}-sonar
-    
     - name: Cache Maven packages
       uses: actions/cache@v2
       with:
@@ -54,33 +31,44 @@ jobs:
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2
     
-    - name: Create sonar.properties file
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
+    
+    - name: Install frontend dependencies
       run: |
-        cat > sonar-project.properties << EOF
-        # Project configuration
+        cd front
+        npm install
+    
+    - name: Run frontend tests with coverage
+      run: |
+        cd front
+        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
+      continue-on-error: true  # Pour ne pas bloquer l'analyse Sonar si les tests échouent
+    
+    # Créer le fichier sonar.properties au niveau racine
+    - name: Create sonar.properties
+      run: |
+        cat > sonar-project.properties << 'EOF'
+        # Configuration globale
         sonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
         sonar.organization=${{ secrets.SONAR_ORGANIZATION }}
         sonar.host.url=https://sonarcloud.io
-        sonar.projectName=Projet10
         
-        # Source code configuration
+        # Configuration source
         sonar.sources=back/src/main,front/src
-        sonar.tests=back/src/test,front/src/app
-        
-        # Encoding of the source code
+        sonar.tests=back/src/test,front/src/app/**/*.spec.ts
         sonar.sourceEncoding=UTF-8
         
-        # Backend Java configuration
+        # Configuration Java
         sonar.java.source=11
         sonar.java.binaries=back/target/classes
         sonar.java.test.binaries=back/target/test-classes
-        sonar.java.libraries=back/target/dependency/*.jar
-        sonar.java.test.libraries=back/target/dependency/*.jar
+        sonar.jacoco.reportPaths=back/target/jacoco.exec
         sonar.java.coveragePlugin=jacoco
-        sonar.coverage.jacoco.xmlReportPaths=back/target/site/jacoco/jacoco.xml
         
-        # Frontend TypeScript/Angular configuration
-        sonar.typescript.node=node
+        # Configuration TypeScript
         sonar.typescript.lcov.reportPaths=front/coverage/lcov.info
         sonar.javascript.lcov.reportPaths=front/coverage/lcov.info
         
@@ -89,29 +77,23 @@ jobs:
         sonar.coverage.exclusions=**/*.spec.ts,**/test/**
         EOF
     
-    - name: Build and Analyze with Maven and Sonar
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    # Exécuter les tests backend avec Maven et générer le rapport JaCoCo
+    - name: Build and test backend with coverage
       run: |
         cd back
-        mvn clean verify jacoco:report org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-          -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
-          -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
-          -Dsonar.host.url=https://sonarcloud.io
+        mvn clean verify jacoco:report
     
-    - name: SonarCloud Scan for Frontend
-      uses: SonarSource/sonarcloud-github-action@master
+    # Analyse SonarCloud pour le projet global
+    - name: Run SonarCloud analysis
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      with:
-        projectBaseDir: front
-        args: >
-          -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}_frontend
-          -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
-          -Dsonar.sources=src
-          -Dsonar.tests=src
-          -Dsonar.test.inclusions=**/*.spec.ts
-          -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+      run: |
+        # Afficher le fichier de configuration pour déboguer
+        cat sonar-project.properties
+        
+        # Exécuter l'analyse SonarCloud avec le scanner
+        mvn sonar:sonar \
+          -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
+          -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
+          -Dsonar.host.url=https://sonarcloud.io
