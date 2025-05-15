@@ -3,59 +3,91 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    name: Build and Test
+  backend-build-and-test:
+    name: Backend Build and Test
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v2
     
-    # Configuration Java
     - name: Set up JDK 11
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v2
       with:
         java-version: '11'
         distribution: 'temurin'
-        cache: maven
     
-    # Configuration Node.js
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '16'
-        cache: 'npm'
-        cache-dependency-path: './front/package-lock.json'
-    
-    # Build Backend
-    - name: Build Backend
+    # Exécuter Maven avec Jacoco pour la couverture de code
+    - name: Build and test backend with coverage
       run: |
         cd back
-        mvn clean install
+        mvn clean verify jacoco:report
     
-    # Build Frontend
-    - name: Build Frontend
+    # Archiver les rapports de test et de couverture
+    - name: Archive backend test and coverage reports
+      uses: actions/upload-artifact@v2
+      with:
+        name: backend-reports
+        path: |
+          back/target/surefire-reports/
+          back/target/site/jacoco/
+        retention-days: 5
+    
+    # Build Docker image
+    - name: Build backend Docker image
+      run: |
+        cd back
+        docker build -t bobapp-back .
+  
+  frontend-build-and-test:
+    name: Frontend Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
+    
+    - name: Install Chrome for Karma tests
+      uses: browser-actions/setup-chrome@latest
+    
+    # Installer les dépendances, exécuter les tests avec couverture
+    - name: Install dependencies and test with coverage
       run: |
         cd front
         npm install
+        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
     
-    # Build Docker images
-    - name: Build Docker images
+    # Archiver les rapports de test et de couverture
+    - name: Archive frontend test and coverage reports
+      uses: actions/upload-artifact@v2
+      with:
+        name: frontend-reports
+        path: |
+          front/coverage/
+        retention-days: 5
+    
+    # Build Docker image
+    - name: Build frontend Docker image
       run: |
-        # Build frontend Docker image
-        echo "Building Frontend Docker image..."
         cd front
         docker build -t bobapp-front .
-        
-        # Build backend Docker image
-        echo "Building Backend Docker image..."
-        cd ../back
-        docker build -t bobapp-back .
+
+  docker-test:
+    name: Test Docker Containers
+    needs: [backend-build-and-test, frontend-build-and-test]
+    runs-on: ubuntu-latest
     
-    # Test Docker images locally
+    steps:
     - name: Test Docker containers
       run: |
         # Démarrer le conteneur frontend
@@ -72,8 +104,55 @@ jobs:
         # Nettoyer les conteneurs après le test
         docker stop bobapp-front bobapp-back
         docker rm bobapp-front bobapp-back
+
+  report-summary:
+    name: Generate Summary Report
+    needs: [backend-build-and-test, frontend-build-and-test]
+    runs-on: ubuntu-latest
     
-    # Notification du statut
-    - name: Build status
+    steps:
+    - name: Download all reports
+      uses: actions/download-artifact@v2
+      with:
+        path: reports
+    
+    - name: Generate coverage report summary
       run: |
-        echo "Build and container test: COMPLETED"
+        echo "# Test and Coverage Report" > summary.txt
+        echo "## Backend (Java)" >> summary.txt
+        
+        # Backend coverage report
+        if [ -f "reports/backend-reports/site/jacoco/index.html" ]; then
+          JAVA_COVERAGE=$(grep -o "Total[^%]*%" reports/backend-reports/site/jacoco/index.html | head -1 | tr -d " \t\n\r" || echo "N/A")
+          echo "- Backend Code Coverage: $JAVA_COVERAGE" >> summary.txt
+        else
+          echo "- Backend Code Coverage: No data available" >> summary.txt
+        fi
+        
+        # Backend test results
+        if [ -d "reports/backend-reports/surefire-reports" ]; then
+          TEST_COUNT=$(ls reports/backend-reports/surefire-reports/*.xml | wc -l)
+          FAILED_COUNT=$(grep -l "<failure" reports/backend-reports/surefire-reports/*.xml 2>/dev/null | wc -l)
+          echo "- Backend Tests: $((TEST_COUNT - FAILED_COUNT)) passed, $FAILED_COUNT failed of $TEST_COUNT total" >> summary.txt
+        else
+          echo "- Backend Tests: No data available" >> summary.txt
+        fi
+        
+        echo "## Frontend (Angular)" >> summary.txt
+        
+        # Frontend coverage report
+        if [ -f "reports/frontend-reports/coverage/index.html" ]; then
+          TS_COVERAGE=$(grep -o "statements.*%" reports/frontend-reports/coverage/index.html | head -1 | grep -o "[0-9]*\.[0-9]*%" || echo "N/A")
+          echo "- Frontend Code Coverage: $TS_COVERAGE" >> summary.txt
+        else
+          echo "- Frontend Code Coverage: No data available" >> summary.txt
+        fi
+        
+        cat summary.txt
+    
+    - name: Upload summary report
+      uses: actions/upload-artifact@v2
+      with:
+        name: test-coverage-summary
+        path: summary.txt
+        retention-days: 5
