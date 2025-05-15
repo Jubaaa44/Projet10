@@ -24,13 +24,6 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
     
-    - name: Cache Maven packages
-      uses: actions/cache@v2
-      with:
-        path: ~/.m2
-        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-        restore-keys: ${{ runner.os }}-m2
-    
     - name: Set up Node.js
       uses: actions/setup-node@v2
       with:
@@ -83,16 +76,23 @@ jobs:
         cd back
         mvn clean verify jacoco:report
     
-    # Analyse SonarCloud pour le projet global
+    # Analyse SonarCloud 
+    - name: Setup scanner
+      run: |
+        mkdir -p $HOME/.sonar
+        
+        # Télécharger le scanner SonarCloud pour Maven
+        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:help
+        
+        # Afficher le fichier de configuration pour déboguer
+        cat sonar-project.properties
+    
     - name: Run SonarCloud analysis
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       run: |
-        # Afficher le fichier de configuration pour déboguer
-        cat sonar-project.properties
-        
-        # Exécuter l'analyse SonarCloud avec le scanner
+        cd back
         mvn sonar:sonar \
           -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
           -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
