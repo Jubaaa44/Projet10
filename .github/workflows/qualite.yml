@@ -18,10 +18,10 @@ jobs:
       with:
         fetch-depth: 0  # Shallow clones should be disabled for better relevancy of analysis
     
-    - name: Set up JDK 11
+    - name: Set up JDK 17
       uses: actions/setup-java@v2
       with:
-        java-version: '11'
+        java-version: '17'
         distribution: 'temurin'
     
     - name: Set up Node.js
@@ -76,17 +76,7 @@ jobs:
         cd back
         mvn clean verify jacoco:report
     
-    # Analyse SonarCloud 
-    - name: Setup scanner
-      run: |
-        mkdir -p $HOME/.sonar
-        
-        # Télécharger le scanner SonarCloud pour Maven
-        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:help
-        
-        # Afficher le fichier de configuration pour déboguer
-        cat sonar-project.properties
-    
+    # Analyse SonarCloud directement avec Maven
     - name: Run SonarCloud analysis
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
