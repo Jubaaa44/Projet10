@@ -1,87 +1,117 @@
-name: Code Quality Workflow
+name: Sonar Quality Check
 
 on:
+  push:
+    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  push:
-    branches: [ develop ]
   workflow_dispatch:
 
 jobs:
-  java-quality:
-    name: Java Code Quality
+  sonar-analysis:
+    name: SonarCloud Analysis
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for better relevancy of analysis
     
     - name: Set up JDK 11
       uses: actions/setup-java@v2
       with:
         java-version: '11'
         distribution: 'temurin'
-        # Suppression du cache
-    
-    # Analyse avec Maven
-    - name: Run Maven build with checks
-      run: |
-        cd back
-        mvn clean install
-      
-    # Installation et exécution de PMD simplifié
-    - name: Run PMD
-      run: |
-        cd back
-        mvn pmd:pmd
-      continue-on-error: true
-    
-    # Exécution de tests de sécurité simplifié
-    - name: Run OWASP dependency check
-      run: |
-        cd back
-        mvn dependency-check:check
-      continue-on-error: true
-
-  typescript-quality:
-    name: TypeScript Code Quality
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
     
     - name: Set up Node.js
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-        # Suppression du cache
     
-    - name: Install dependencies
+    - name: Install Frontend Dependencies
       run: |
         cd front
         npm install
     
-    # Exécuter les tests avec couverture
-    - name: Run tests with coverage
+    - name: Run Frontend Tests with Coverage
       run: |
         cd front
-        npm run test -- --no-watch --code-coverage --browsers=ChromeHeadless
+        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
       continue-on-error: true
     
-    # Audit de sécurité npm simplifié
-    - name: Run npm audit
-      run: |
-        cd front
-        npm audit || true
-
-  # Étape simple pour indiquer que tout est terminé
-  summary:
-    name: Quality Summary
-    needs: [java-quality, typescript-quality]
-    if: always()
-    runs-on: ubuntu-latest
+    - name: Cache SonarCloud packages
+      uses: actions/cache@v2
+      with:
+        path: ~/.sonar/cache
+        key: ${{ runner.os }}-sonar
+        restore-keys: ${{ runner.os }}-sonar
     
-    steps:
-    - name: Quality checks completed
-      run: echo "All quality checks have been completed. Check individual job logs for details."
+    - name: Cache Maven packages
+      uses: actions/cache@v2
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    
+    - name: Create sonar.properties file
+      run: |
+        cat > sonar-project.properties << EOF
+        # Project configuration
+        sonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+        sonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+        sonar.host.url=https://sonarcloud.io
+        sonar.projectName=Projet10
+        
+        # Source code configuration
+        sonar.sources=back/src/main,front/src
+        sonar.tests=back/src/test,front/src/app
+        
+        # Encoding of the source code
+        sonar.sourceEncoding=UTF-8
+        
+        # Backend Java configuration
+        sonar.java.source=11
+        sonar.java.binaries=back/target/classes
+        sonar.java.test.binaries=back/target/test-classes
+        sonar.java.libraries=back/target/dependency/*.jar
+        sonar.java.test.libraries=back/target/dependency/*.jar
+        sonar.java.coveragePlugin=jacoco
+        sonar.coverage.jacoco.xmlReportPaths=back/target/site/jacoco/jacoco.xml
+        
+        # Frontend TypeScript/Angular configuration
+        sonar.typescript.node=node
+        sonar.typescript.lcov.reportPaths=front/coverage/lcov.info
+        sonar.javascript.lcov.reportPaths=front/coverage/lcov.info
+        
+        # Exclusions
+        sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/target/classes/static/**
+        sonar.coverage.exclusions=**/*.spec.ts,**/test/**
+        EOF
+    
+    - name: Build and Analyze with Maven and Sonar
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        cd back
+        mvn clean verify jacoco:report org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+          -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
+          -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
+          -Dsonar.host.url=https://sonarcloud.io
+    
+    - name: SonarCloud Scan for Frontend
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        projectBaseDir: front
+        args: >
+          -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}_frontend
+          -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+          -Dsonar.sources=src
+          -Dsonar.tests=src
+          -Dsonar.test.inclusions=**/*.spec.ts
+          -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
