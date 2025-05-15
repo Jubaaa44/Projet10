@@ -46,64 +46,55 @@ jobs:
         cd back
         mvn clean verify jacoco:report
     
-    # Analyse SonarCloud avec valeurs codées en dur
-    - name: Run SonarCloud analysis for backend
+    # Analyse SonarCloud avec un seul projet pour l'ensemble du code
+    - name: Run SonarCloud analysis 
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       run: |
-        cd back
+        # Utilisation d'une clé en minuscules
+        PROJECT_KEY="jubaaa44_projet10"
+        ORGANIZATION="jubaaa44"
         
-        # UTILISATION DE VALEURS CODÉES EN DUR POUR LE DÉBOGAGE
-        # Remplacez ces valeurs par celles de votre projet SonarCloud
-        PROJECT_KEY="Jubaaa44_projet10"
-        ORGANIZATION="Jubaaa44"
+        echo "Using project key: $PROJECT_KEY"
+        echo "Using organization: $ORGANIZATION"
         
-        echo "Using hardcoded project key: $PROJECT_KEY"
-        echo "Using hardcoded organization: $ORGANIZATION"
-        
-        # Exécuter SonarCloud avec les valeurs codées en dur
-        mvn sonar:sonar \
-          -Dsonar.projectKey=$PROJECT_KEY \
-          -Dsonar.organization=$ORGANIZATION \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-          -Dsonar.java.source=11 \
-          -Dsonar.java.binaries=target/classes \
-          -Dsonar.java.test.binaries=target/test-classes \
-          -Dsonar.sourceEncoding=UTF-8 \
-          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-          -Dsonar.projectName="Projet10 Backend"
-    
-    # Analyse frontend avec valeurs codées en dur
-    - name: Run SonarCloud analysis for frontend
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      run: |
-        # Télécharger SonarScanner
+        # Télécharger SonarScanner CLI
         wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip
         unzip -q sonar-scanner-cli-4.7.0.2747-linux.zip
         
-        # UTILISATION DE VALEURS CODÉES EN DUR POUR LE DÉBOGAGE
-        # Remplacez ces valeurs par celles de votre projet SonarCloud
-        PROJECT_KEY="jubaaa44_projet10_frontend"
-        ORGANIZATION="jubaaa44"
+        # Création d'un fichier de configuration unifié pour tout le projet
+        cat > sonar-project.properties << EOF
+        # Configuration globale
+        sonar.projectKey=$PROJECT_KEY
+        sonar.organization=$ORGANIZATION
+        sonar.host.url=https://sonarcloud.io
+        sonar.projectName=Projet10
         
-        echo "Using hardcoded project key: $PROJECT_KEY"
-        echo "Using hardcoded organization: $ORGANIZATION"
+        # Configuration des sources
+        sonar.sources=back/src/main,front/src
+        sonar.tests=back/src/test,front/src/app/**/*.spec.ts
+        sonar.sourceEncoding=UTF-8
         
-        # Exécuter l'analyse frontend
-        cd front
-        ../sonar-scanner-4.7.0.2747-linux/bin/sonar-scanner \
-          -Dsonar.projectKey=$PROJECT_KEY \
-          -Dsonar.organization=$ORGANIZATION \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-          -Dsonar.sources=src \
-          -Dsonar.tests=src \
-          -Dsonar.test.inclusions=**/*.spec.ts \
-          -Dsonar.sourceEncoding=UTF-8 \
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
-          -Dsonar.projectName="Projet10 Frontend"
+        # Configuration Java
+        sonar.java.source=11
+        sonar.java.binaries=back/target/classes
+        sonar.java.test.binaries=back/target/test-classes
+        sonar.jacoco.reportPaths=back/target/jacoco.exec
+        sonar.java.coveragePlugin=jacoco
+        
+        # Configuration TypeScript
+        sonar.typescript.lcov.reportPaths=front/coverage/lcov.info
+        sonar.javascript.lcov.reportPaths=front/coverage/lcov.info
+        
+        # Exclusions
+        sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/target/classes/static/**
+        sonar.coverage.exclusions=**/*.spec.ts,**/test/**
+        EOF
+        
+        # Afficher le fichier de configuration
+        cat sonar-project.properties
+        
+        # Exécuter l'analyse avec le scanner CLI global
+        ./sonar-scanner-4.7.0.2747-linux/bin/sonar-scanner \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
