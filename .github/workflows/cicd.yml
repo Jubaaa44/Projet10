@@ -27,35 +27,22 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: '16'
-        cache: 'yarn'
-    
-    # Détection des répertoires de projet
-    - name: Find project directories
-      id: find-dirs
-      run: |
-        # Trouver backend (dossier avec pom.xml)
-        BACKEND_DIR=$(find . -name "pom.xml" -not -path "*/target/*" | head -n 1 | xargs dirname)
-        if [ -z "$BACKEND_DIR" ]; then BACKEND_DIR="."; fi
-        echo "backend_dir=$BACKEND_DIR" >> $GITHUB_OUTPUT
-        
-        # Trouver frontend (dossier avec angular.json)
-        FRONTEND_DIR=$(find . -name "angular.json" | head -n 1 | xargs dirname)
-        if [ -z "$FRONTEND_DIR" ]; then FRONTEND_DIR="."; fi
-        echo "frontend_dir=$FRONTEND_DIR" >> $GITHUB_OUTPUT
+        cache: 'npm'
+        cache-dependency-path: './front/package-lock.json'
     
     # Build Backend
     - name: Build Backend
       run: mvn clean package -DskipTests
-      working-directory: ${{ steps.find-dirs.outputs.backend_dir }}
+      working-directory: ./back
     
     # Build Frontend
     - name: Install Frontend dependencies
-      run: yarn install
-      working-directory: ${{ steps.find-dirs.outputs.frontend_dir }}
+      run: npm ci
+      working-directory: ./front
       
     - name: Build Frontend
-      run: yarn build --prod
-      working-directory: ${{ steps.find-dirs.outputs.frontend_dir }}
+      run: npm run build -- --prod
+      working-directory: ./front
     
     # Login to Docker Hub
     - name: Login to Docker Hub
@@ -76,7 +63,7 @@ jobs:
         
         # Construire l'image Docker pour le frontend
         echo "Building Frontend Docker image..."
-        cd ${{ steps.find-dirs.outputs.frontend_dir }}
+        cd ./front
         docker build -t bobapp-front:latest -t bobapp-front:$ENV_TAG .
         
         # Pousser les images sur Docker Hub (si nécessaire)
@@ -101,7 +88,7 @@ jobs:
         
         # Construire l'image Docker pour le backend
         echo "Building Backend Docker image..."
-        cd ${{ steps.find-dirs.outputs.backend_dir }}
+        cd ./back
         docker build -t bobapp-back:latest -t bobapp-back:$ENV_TAG .
         
         # Pousser les images sur Docker Hub (si nécessaire)
