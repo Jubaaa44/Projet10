@@ -21,14 +21,12 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-        cache: maven
+        # Suppression du cache
     
     - name: Run backend tests
       run: |
         cd back
         mvn clean install
-    
-    # Supprimé l'archivage des résultats de test pour éviter les problèmes
   
   frontend-tests:
     name: Frontend Tests
@@ -42,8 +40,7 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-        cache: 'npm'
-        cache-dependency-path: './front/package-lock.json'
+        # Suppression du cache
     
     - name: Install Chrome for Karma tests
       uses: browser-actions/setup-chrome@latest
@@ -53,19 +50,14 @@ jobs:
         cd front
         npm install
         npm run test -- --no-watch --browsers=ChromeHeadless
-    
-    # Supprimé l'archivage des résultats de test pour éviter les problèmes
 
-  # Simplifié pour éviter les problèmes d'actions
-  test-summary:
+  # Étape simple pour indiquer que tout est terminé
+  summary:
     name: Test Summary
     needs: [backend-tests, frontend-tests]
     if: always()
     runs-on: ubuntu-latest
     
     steps:
-    - name: Generate simple test summary
-      run: |
-        echo "Tests completed. Check job logs for details."
-        
-    # Commentaire PR supprimé pour éviter les problèmes d'actions
+    - name: Tests completed
+      run: echo "All tests have been completed. Check individual job logs for details."

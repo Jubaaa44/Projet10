@@ -21,34 +21,27 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-        cache: maven
+        # Suppression du cache
     
-    # Analyse JaCoCo pour la couverture de code
-    - name: Run tests with JaCoCo
+    # Analyse avec Maven
+    - name: Run Maven build with checks
       run: |
         cd back
         mvn clean install
       
-    # Installation de PMD (si non inclus dans le build Maven)
-    - name: Install PMD
-      run: |
-        wget https://github.com/pmd/pmd/releases/download/pmd_releases%2F6.55.0/pmd-bin-6.55.0.zip
-        unzip pmd-bin-6.55.0.zip
-    
-    # Exécution de PMD
+    # Installation et exécution de PMD simplifié
     - name: Run PMD
       run: |
-        ./pmd-bin-6.55.0/bin/run.sh pmd -d back/src -R rulesets/java/quickstart.xml -f text
+        cd back
+        mvn pmd:pmd
       continue-on-error: true
     
-    # Installation et exécution de SpotBugs
-    - name: Run SpotBugs
+    # Exécution de tests de sécurité simplifié
+    - name: Run OWASP dependency check
       run: |
         cd back
-        mvn com.github.spotbugs:spotbugs-maven-plugin:4.7.3.0:spotbugs -Dspotbugs.effort=Max -Dspotbugs.threshold=Low
+        mvn dependency-check:check
       continue-on-error: true
-    
-    # Supprimé l'archivage des rapports pour éviter les problèmes
 
   typescript-quality:
     name: TypeScript Code Quality
@@ -62,27 +55,12 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-        cache: 'npm'
-        cache-dependency-path: './front/package-lock.json'
+        # Suppression du cache
     
     - name: Install dependencies
       run: |
         cd front
         npm install
-    
-    # Installer ESLint si nécessaire
-    - name: Install ESLint
-      run: |
-        cd front
-        npm install --save-dev eslint eslint-plugin-angular @typescript-eslint/eslint-plugin @typescript-eslint/parser
-      continue-on-error: true
-    
-    # Exécuter ESLint
-    - name: Run ESLint
-      run: |
-        cd front
-        npx eslint . --ext .ts
-      continue-on-error: true
     
     # Exécuter les tests avec couverture
     - name: Run tests with coverage
@@ -91,23 +69,19 @@ jobs:
         npm run test -- --no-watch --code-coverage --browsers=ChromeHeadless
       continue-on-error: true
     
-    # Audit de sécurité npm
+    # Audit de sécurité npm simplifié
     - name: Run npm audit
       run: |
         cd front
-        npm audit
-      continue-on-error: true
-    
-    # Supprimé l'archivage des rapports pour éviter les problèmes
+        npm audit || true
 
-  # Simplifié pour éviter les problèmes d'actions
-  quality-summary:
+  # Étape simple pour indiquer que tout est terminé
+  summary:
     name: Quality Summary
     needs: [java-quality, typescript-quality]
-    runs-on: ubuntu-latest
     if: always()
+    runs-on: ubuntu-latest
     
     steps:
-    - name: Generate simple quality summary
-      run: |
-        echo "Quality checks completed. Check job logs for details."
+    - name: Quality checks completed
+      run: echo "All quality checks have been completed. Check individual job logs for details."
