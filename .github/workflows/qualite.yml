@@ -1,4 +1,4 @@
-name: SonarCloud Analysis
+name: Simple SonarCloud Analysis
 
 on:
   push:
@@ -22,26 +22,42 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       
-      - name: Debug - List environment variables
-        run: |
-          echo "NOM is set: ${{ secrets.NOM != '' }}"
-          echo "SONAR_ORGANIZATION is set: ${{ secrets.SONAR_ORGANIZATION != '' }}"
-          echo "SONAR_PROJECT_KEY is set: ${{ secrets.SONAR_PROJECT_KEY != '' }}"
-          echo "SONAR_TOKEN is set: ${{ secrets.SONAR_TOKEN != '' }}"
-          echo "VALEUR is set: ${{ secrets.VALEUR != '' }}"
-      
       - name: Build backend
         run: |
           cd back
           mvn clean verify
       
-      - name: SonarCloud Scan with your variables
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: Print environment for debugging
+        run: |
+          echo "GitHub workspace: $GITHUB_WORKSPACE"
+          echo "Current directory:"
+          pwd
+          echo "Files in current directory:"
+          ls -la
+          echo "Files in back directory:"
+          ls -la back
+      
+      # Définir explicitement le token comme variable d'environnement
+      - name: Set SonarCloud token
+        run: echo "SONAR_TOKEN=${{ secrets.SONAR_TOKEN }}" >> $GITHUB_ENV
+      
+      # Utiliser Maven directement pour l'analyse Sonar
+      - name: Run SonarCloud analysis with Maven
+        run: |
+          cd back
+          export SONAR_TOKEN="${{ secrets.SONAR_TOKEN }}"
+          
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "ERROR: SONAR_TOKEN is empty!"
+            exit 1
+          else
+            echo "SONAR_TOKEN is set (value hidden for security)"
+          fi
+          
+          mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.projectKey=Jubaaa44_Projet10 \
+            -Dsonar.organization=projet10 \
+            -Dsonar.host.url=https://sonarcloud.io
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Ce secret est fourni automatiquement
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Ce secret est celui que vous avez configuré
-        with:
-          projectBaseDir: back
-          args: >
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
