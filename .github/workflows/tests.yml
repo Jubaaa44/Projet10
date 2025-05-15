@@ -1,0 +1,158 @@
+name: Tests Workflow
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Permet de déclencher manuellement le workflow
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Run backend tests
+      run: mvn clean verify
+      working-directory: ./back
+    
+    - name: Archive test results
+      if: always()  # Exécuter même si les tests échouent
+      uses: actions/upload-artifact@v3
+      with:
+        name: backend-test-results
+        path: |
+          back/target/surefire-reports/
+          back/target/failsafe-reports/
+          back/target/site/jacoco/
+        retention-days: 7
+  
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+        cache-dependency-path: './front/package-lock.json'
+    
+    - name: Install Chrome for Karma tests
+      uses: browser-actions/setup-chrome@latest
+    
+    - name: Install dependencies
+      run: npm ci
+      working-directory: ./front
+    
+    - name: Run frontend tests
+      run: npm run test -- --no-watch --browsers=ChromeHeadless
+      working-directory: ./front
+    
+    - name: Archive test results
+      if: always()  # Exécuter même si les tests échouent
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-test-results
+        path: |
+          front/coverage/
+          front/karma-results.json
+        retention-days: 7
+
+  test-summary:
+    name: Test Summary
+    needs: [backend-tests, frontend-tests]
+    if: always()  # Exécuter même si certains tests échouent
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Download all test results
+      uses: actions/download-artifact@v3
+      with:
+        path: test-results
+    
+    - name: Generate test summary
+      run: |
+        echo "# Test Summary" > test-summary.md
+        echo "## Backend Tests" >> test-summary.md
+        
+        if [ -d "test-results/backend-test-results/surefire-reports" ]; then
+          FAILED=$(grep -l "<failure" test-results/backend-test-results/surefire-reports/*.xml 2>/dev/null | wc -l)
+          TOTAL=$(ls test-results/backend-test-results/surefire-reports/*.xml 2>/dev/null | wc -l)
+          
+          if [ "$TOTAL" -gt 0 ]; then
+            if [ "$FAILED" -eq 0 ]; then
+              echo "✅ All $TOTAL backend tests passed" >> test-summary.md
+            else
+              echo "❌ $FAILED/$TOTAL backend tests failed" >> test-summary.md
+            fi
+          else
+            echo "⚠️ No backend test results found" >> test-summary.md
+          fi
+        else
+          echo "⚠️ No backend test results found" >> test-summary.md
+        fi
+        
+        echo "## Frontend Tests" >> test-summary.md
+        
+        if [ -f "test-results/frontend-test-results/karma-results.json" ]; then
+          FAILED=$(grep -o "\"failed\": [0-9]*" test-results/frontend-test-results/karma-results.json | sed 's/"failed": //')
+          TOTAL=$(grep -o "\"total\": [0-9]*" test-results/frontend-test-results/karma-results.json | sed 's/"total": //')
+          
+          if [ ! -z "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+            if [ -z "$FAILED" ] || [ "$FAILED" -eq 0 ]; then
+              echo "✅ All $TOTAL frontend tests passed" >> test-summary.md
+            else
+              echo "❌ $FAILED/$TOTAL frontend tests failed" >> test-summary.md
+            fi
+          else
+            echo "⚠️ No frontend test results found" >> test-summary.md
+          fi
+        else
+          echo "⚠️ No frontend test results found" >> test-summary.md
+        fi
+        
+        cat test-summary.md
+    
+    - name: Upload test summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-summary
+        path: test-summary.md
+        retention-days: 7
+    
+    # Si c'est une pull request, ajouter un commentaire avec le résumé des tests
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('test-summary.md', 'utf8');
+          const context = github.context;
+          
+          github.rest.issues.createComment({
+            issue_number: context.payload.pull_request.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });
