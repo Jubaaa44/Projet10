@@ -27,6 +27,7 @@ jobs:
       run: |
         cd back
         mvn clean install
+        mvn clean verify
   
   frontend-tests:
     name: Frontend Tests
