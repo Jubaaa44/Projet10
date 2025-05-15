@@ -5,7 +5,7 @@ on:
     branches: [ main, develop ]
   push:
     branches: [ main, develop ]
-  workflow_dispatch:  # Permet de déclencher manuellement le workflow
+  workflow_dispatch:
 
 jobs:
   backend-tests:
@@ -24,17 +24,17 @@ jobs:
         cache: maven
     
     - name: Run backend tests
-      run: mvn clean verify
-      working-directory: ./back
+      run: |
+        cd back
+        mvn clean install
     
     - name: Archive test results
-      if: always()  # Exécuter même si les tests échouent
-      uses: actions/upload-artifact@v3
+      if: always()
+      uses: actions/upload-artifact@v2  # Utiliser v2 au lieu de v3
       with:
         name: backend-test-results
         path: |
           back/target/surefire-reports/
-          back/target/failsafe-reports/
           back/target/site/jacoco/
         retention-days: 7
   
@@ -56,17 +56,15 @@ jobs:
     - name: Install Chrome for Karma tests
       uses: browser-actions/setup-chrome@latest
     
-    - name: Install dependencies
-      run: npm ci
-      working-directory: ./front
-    
-    - name: Run frontend tests
-      run: npm run test -- --no-watch --browsers=ChromeHeadless
-      working-directory: ./front
+    - name: Install dependencies and run tests
+      run: |
+        cd front
+        npm install
+        npm run test -- --no-watch --browsers=ChromeHeadless
     
     - name: Archive test results
-      if: always()  # Exécuter même si les tests échouent
-      uses: actions/upload-artifact@v3
+      if: always()
+      uses: actions/upload-artifact@v2  # Utiliser v2 au lieu de v3
       with:
         name: frontend-test-results
         path: |
@@ -77,7 +75,7 @@ jobs:
   test-summary:
     name: Test Summary
     needs: [backend-tests, frontend-tests]
-    if: always()  # Exécuter même si certains tests échouent
+    if: always()
     runs-on: ubuntu-latest
     
     steps:
@@ -85,7 +83,7 @@ jobs:
       uses: actions/checkout@v3
     
     - name: Download all test results
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v2  # Utiliser v2 au lieu de v3
       with:
         path: test-results
     
@@ -133,13 +131,12 @@ jobs:
         cat test-summary.md
     
     - name: Upload test summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2  # Utiliser v2 au lieu de v3
       with:
         name: test-summary
         path: test-summary.md
         retention-days: 7
     
-    # Si c'est une pull request, ajouter un commentaire avec le résumé des tests
     - name: Comment on PR
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v6
