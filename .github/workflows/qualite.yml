@@ -1,4 +1,4 @@
-name: Sonar Quality Check
+name: Docker and Sonar Quality Check
 
 on:
   push:
@@ -8,93 +8,112 @@ on:
   workflow_dispatch:
 
 jobs:
-  sonarcloud:
-    name: SonarCloud Analysis
+  build-and-analyze:
+    name: Build Docker Images and Analyze Code
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
       with:
-        fetch-depth: 0  # Shallow clones should be disabled for better relevancy of analysis
+        fetch-depth: 0  # Important pour SonarCloud
     
-    - name: Set up JDK 17
+    # Configuration de Java 17 pour l'analyse SonarCloud
+    - name: Set up JDK 17 for SonarCloud
       uses: actions/setup-java@v2
       with:
         java-version: '17'
         distribution: 'temurin'
     
+    # Configuration de Node.js pour le frontend
     - name: Set up Node.js
       uses: actions/setup-node@v2
       with:
         node-version: '16'
     
-    - name: Install frontend dependencies
-      run: |
-        cd front
-        npm install
-    
-    - name: Run frontend tests with coverage
-      run: |
-        cd front
-        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
-      continue-on-error: true  # Pour ne pas bloquer l'analyse Sonar si les tests échouent
-    
-    # Exécuter les tests backend avec Maven et générer le rapport JaCoCo
-    - name: Build and test backend with coverage
+    # Exécution des tests et génération des rapports de couverture (backend)
+    - name: Build and test backend
       run: |
         cd back
         mvn clean verify jacoco:report
     
-    # Analyse SonarCloud avec un seul projet pour l'ensemble du code
-    - name: Run SonarCloud analysis 
+    # Exécution des tests et génération des rapports de couverture (frontend)
+    - name: Build and test frontend
+      run: |
+        cd front
+        npm install
+        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
+      continue-on-error: true
+    
+    # Analyse SonarCloud du backend avec Maven
+    - name: Analyze backend with SonarCloud
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       run: |
-        # Utilisation d'une clé en minuscules
-        PROJECT_KEY="jubaaa44_projet10"
-        ORGANIZATION="jubaaa44"
+        cd back
+        mvn sonar:sonar \
+          -Dsonar.projectKey=jubaaa44_projet10_back \
+          -Dsonar.organization=jubaaa44 \
+          -Dsonar.host.url=https://sonarcloud.io \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+          -Dsonar.java.source=11 \
+          -Dsonar.java.binaries=target/classes \
+          -Dsonar.java.test.binaries=target/test-classes \
+          -Dsonar.sourceEncoding=UTF-8 \
+          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+          -Dsonar.projectName="Projet10 Backend"
+    
+    # Analyse SonarCloud du frontend avec l'action officielle
+    - name: Analyze frontend with SonarCloud
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        projectBaseDir: front
+        args: >
+          -Dsonar.projectKey=jubaaa44_projet10_front
+          -Dsonar.organization=jubaaa44
+          -Dsonar.sources=src
+          -Dsonar.tests=src
+          -Dsonar.test.inclusions=**/*.spec.ts
+          -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.projectName="Projet10 Frontend"
+    
+    # Construction des images Docker
+    - name: Build Docker images
+      run: |
+        # Construction de l'image frontend
+        cd front
+        docker build -t bobapp-front .
         
-        echo "Using project key: $PROJECT_KEY"
-        echo "Using organization: $ORGANIZATION"
+        # Construction de l'image backend
+        cd ../back
+        docker build -t bobapp-back .
+    
+    # Test des images Docker
+    - name: Test Docker containers
+      run: |
+        # Démarrer le conteneur frontend
+        docker run -p 8080:8080 --name bobapp-front -d bobapp-front
+        echo "Frontend container started on port 8080"
         
-        # Télécharger SonarScanner CLI
-        wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip
-        unzip -q sonar-scanner-cli-4.7.0.2747-linux.zip
+        # Démarrer le conteneur backend
+        docker run -p 9080:8080 --name bobapp-back -d bobapp-back
+        echo "Backend container started on port 9080"
         
-        # Création d'un fichier de configuration unifié pour tout le projet
-        cat > sonar-project.properties << EOF
-        # Configuration globale
-        sonar.projectKey=$PROJECT_KEY
-        sonar.organization=$ORGANIZATION
-        sonar.host.url=https://sonarcloud.io
-        sonar.projectName=Projet10
+        # Vérifier que les conteneurs sont en cours d'exécution
+        docker ps
         
-        # Configuration des sources
-        sonar.sources=back/src/main,front/src
-        sonar.tests=back/src/test,front/src/app/**/*.spec.ts
-        sonar.sourceEncoding=UTF-8
+        # Attendre quelques secondes pour laisser les conteneurs démarrer
+        sleep 10
         
-        # Configuration Java
-        sonar.java.source=11
-        sonar.java.binaries=back/target/classes
-        sonar.java.test.binaries=back/target/test-classes
-        sonar.jacoco.reportPaths=back/target/jacoco.exec
-        sonar.java.coveragePlugin=jacoco
+        # Vérifier que les conteneurs répondent
+        curl -s http://localhost:8080 || echo "Frontend container is not responding"
+        curl -s http://localhost:9080/actuator/health || echo "Backend container is not responding"
         
-        # Configuration TypeScript
-        sonar.typescript.lcov.reportPaths=front/coverage/lcov.info
-        sonar.javascript.lcov.reportPaths=front/coverage/lcov.info
-        
-        # Exclusions
-        sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/target/classes/static/**
-        sonar.coverage.exclusions=**/*.spec.ts,**/test/**
-        EOF
-        
-        # Afficher le fichier de configuration
-        cat sonar-project.properties
-        
-        # Exécuter l'analyse avec le scanner CLI global
-        ./sonar-scanner-4.7.0.2747-linux/bin/sonar-scanner \
-          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+        # Nettoyer les conteneurs après le test
+        docker stop bobapp-front bobapp-back
+        docker rm bobapp-front bobapp-back
