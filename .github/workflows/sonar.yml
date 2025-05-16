@@ -1,5 +1,9 @@
 name: SonarCloud Analysis
 on:
+  workflow_call:  # Ajoutez cette section
+    secrets:
+      SONAR_TOKEN:
+        required: true
   push:
     branches:
       - main

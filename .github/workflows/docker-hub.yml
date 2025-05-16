@@ -1,6 +1,12 @@
 name: Docker Hub Deployment
 
 on:
+  workflow_call:  # Ajoutez cette section
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
   push:
     branches: [ main ]
     tags: [ 'v*' ]  # Déclenche également sur les tags commençant par "v"
