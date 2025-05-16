@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Reports</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { color: #333; }
+    p { margin: 10px 0; }
+    .message { padding: 10px; background-color: #f8f8f8; border-left: 4px solid #ccc; margin: 10px 0; }
+    .success { border-left-color: #4CAF50; }
+    .info { border-left-color: #2196F3; }
+  </style>
+</head>
+<body>
+  <h1>Test Reports</h1>
+  
+  <div class="message success">
+    <p><strong>Tests completed!</strong></p>
+    <p>Tests have been executed for both backend and frontend.</p>
+  </div>
+  
+  <div class="message info">
+    <p><strong>How to generate detailed reports</strong></p>
+    <p>To view detailed test reports, run tests locally:</p>
+    <p>For backend: <code>cd back && mvn clean verify</code></p>
+    <p>For frontend: <code>cd front && npm run test -- --code-coverage</code></p>
+  </div>
+  
+  <h2>Summary</h2>
+  <p>Backend tests: Executed</p>
+  <p>Frontend tests: Executed</p>
+  
+  <p>Generated on: Fri May 16 20:55:25 UTC 2025</p>
+</body>
+</html>
