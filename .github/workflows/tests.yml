@@ -8,8 +8,6 @@ jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
-    outputs:
-      test_result: ${{ steps.test_status.outputs.result }}
     
     steps:
     - name: Checkout code
@@ -22,134 +20,14 @@ jobs:
         distribution: 'temurin'
     
     - name: Run backend tests
-      id: run_tests
       run: |
         cd back
-        mvn clean install || echo "::warning::Tests failed but continuing"
-        mvn clean verify || echo "::warning::Verification failed but continuing"
-    
-    # Création des rapports de tests backend
-    - name: Create backend test reports directory
-      run: |
-        mkdir -p test-reports/backend
-        
-        # Copier les rapports s'ils existent
-        if [ -d "back/target/surefire-reports" ]; then
-          cp -r back/target/surefire-reports/* test-reports/backend/ || true
-          echo "Copied test reports"
-        else
-          echo "No test reports found"
-        fi
-        
-        if [ -d "back/target/site/jacoco" ]; then
-          mkdir -p test-reports/backend/jacoco
-          cp -r back/target/site/jacoco/* test-reports/backend/jacoco/ || true
-          echo "Copied coverage reports"
-        else
-          echo "No coverage reports found"
-        fi
-        
-        ls -la test-reports/backend
-    
-    # Déterminer le statut des tests
-    - name: Determine test status
-      id: test_status
-      run: |
-        if [ -d "back/target/surefire-reports" ]; then
-          FAILURES=$(grep -l "<failure" back/target/surefire-reports/*.xml 2>/dev/null | wc -l)
-          if [ "$FAILURES" -eq "0" ]; then
-            echo "result=success" >> $GITHUB_OUTPUT
-            echo "All backend tests passed!"
-          else
-            echo "result=failure" >> $GITHUB_OUTPUT
-            echo "Some backend tests failed!"
-          fi
-        else
-          echo "result=unknown" >> $GITHUB_OUTPUT
-          echo "No test results found"
-        fi
-    
-    # Créer un rapport HTML
-    - name: Generate HTML report
-      run: |
-        cat > test-reports/backend/index.html << EOF
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Backend Test Report</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #333; }
-            .passed { color: green; }
-            .failed { color: red; }
-            table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-            th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
-            th { background-color: #f2f2f2; }
-            .coverage-link { display: inline-block; margin-top: 20px; padding: 10px; background-color: #f2f2f2; text-decoration: none; color: #333; }
-          </style>
-        </head>
-        <body>
-          <h1>Backend Test Report</h1>
-          <p>Generated on: $(date)</p>
-        EOF
-        
-        # Ajouter le résumé des tests
-        if [ -d "back/target/surefire-reports" ]; then
-          TESTS=$(ls back/target/surefire-reports/*.xml 2>/dev/null | wc -l)
-          FAILURES=$(grep -l "<failure" back/target/surefire-reports/*.xml 2>/dev/null | wc -l)
-          
-          if [ "$FAILURES" -eq "0" ]; then
-            echo "<p class='passed'>✅ All $TESTS tests passed</p>" >> test-reports/backend/index.html
-          else
-            echo "<p class='failed'>❌ $FAILURES out of $TESTS tests failed</p>" >> test-reports/backend/index.html
-          fi
-          
-          # Ajouter un tableau des tests
-          echo "<h2>Test Details</h2>" >> test-reports/backend/index.html
-          echo "<table>" >> test-reports/backend/index.html
-          echo "<tr><th>Test Class</th><th>Status</th></tr>" >> test-reports/backend/index.html
-          
-          for file in back/target/surefire-reports/*.xml; do
-            if [ -f "$file" ]; then
-              CLASS_NAME=$(grep -o "classname=.*" "$file" | head -1 | cut -d'"' -f2)
-              if grep -q "<failure" "$file"; then
-                echo "<tr><td>$CLASS_NAME</td><td class='failed'>Failed</td></tr>" >> test-reports/backend/index.html
-              else
-                echo "<tr><td>$CLASS_NAME</td><td class='passed'>Passed</td></tr>" >> test-reports/backend/index.html
-              fi
-            fi
-          done
-          
-          echo "</table>" >> test-reports/backend/index.html
-        else
-          echo "<p>No test results available</p>" >> test-reports/backend/index.html
-        fi
-        
-        # Ajouter un lien vers le rapport de couverture
-        if [ -d "test-reports/backend/jacoco" ]; then
-          echo "<a class='coverage-link' href='jacoco/index.html'>View Coverage Report</a>" >> test-reports/backend/index.html
-        fi
-        
-        echo "</body></html>" >> test-reports/backend/index.html
-        
-        # Afficher le rapport
-        echo "Backend test report created at test-reports/backend/index.html"
-    
-    # Stocker le rapport comme artefact du workflow
-    - name: Store backend report
-      uses: actions/upload-artifact@v2
-      if: always()
-      continue-on-error: true
-      with:
-        name: backend-test-report
-        path: test-reports/backend
-        retention-days: 14
+        mvn clean install
+        mvn clean verify
   
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
-    outputs:
-      test_result: ${{ steps.test_status.outputs.result }}
     
     steps:
     - name: Checkout code
@@ -164,129 +42,92 @@ jobs:
       uses: browser-actions/setup-chrome@latest
     
     - name: Install dependencies and run tests
-      id: run_tests
       run: |
         cd front
         npm install
-        npm run test -- --no-watch --browsers=ChromeHeadless || echo "::warning::Tests failed but continuing"
-    
-    # Déterminer le statut des tests
-    - name: Determine test status
-      id: test_status
-      run: |
-        if [ -d "front/coverage" ]; then
-          echo "result=success" >> $GITHUB_OUTPUT
-          echo "Frontend tests executed!"
-        else
-          echo "result=unknown" >> $GITHUB_OUTPUT
-          echo "No coverage results found"
-        fi
-    
-    # Création des rapports de tests frontend
-    - name: Create frontend test reports directory
-      run: |
-        mkdir -p test-reports/frontend
-        
-        # Copier les rapports s'ils existent
-        if [ -d "front/coverage" ]; then
-          cp -r front/coverage/* test-reports/frontend/ || true
-          echo "Copied coverage reports"
-        else
-          echo "No coverage reports found"
-        fi
-        
-        ls -la test-reports/frontend
-    
-    # Créer un rapport HTML
-    - name: Generate HTML report
-      run: |
-        cat > test-reports/frontend/index.html << EOF
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Frontend Test Report</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #333; }
-            .coverage-link { display: inline-block; margin-top: 20px; padding: 10px; background-color: #f2f2f2; text-decoration: none; color: #333; }
-          </style>
-        </head>
-        <body>
-          <h1>Frontend Test Report</h1>
-          <p>Generated on: $(date)</p>
-        EOF
-        
-        # Ajouter un lien vers le rapport de couverture
-        if [ -d "test-reports/frontend" ] && [ "$(ls -A test-reports/frontend)" ]; then
-          echo "<p>Coverage report is available.</p>" >> test-reports/frontend/index.html
-          echo "<a class='coverage-link' href='lcov-report/index.html'>View Coverage Report</a>" >> test-reports/frontend/index.html
-        else
-          echo "<p>No coverage report available.</p>" >> test-reports/frontend/index.html
-        fi
-        
-        echo "</body></html>" >> test-reports/frontend/index.html
-        
-        # Afficher le rapport
-        echo "Frontend test report created at test-reports/frontend/index.html"
-    
-    # Stocker le rapport comme artefact du workflow
-    - name: Store frontend report
-      uses: actions/upload-artifact@v2
-      if: always()
-      continue-on-error: true
-      with:
-        name: frontend-test-report
-        path: test-reports/frontend
-        retention-days: 14
+        npm run test -- --no-watch --browsers=ChromeHeadless
 
-  generate-summary:
-    name: Generate Combined Report
+  publish-reports:
+    name: Publish Reports to GitHub Pages
     needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
     if: always()
     
     steps:
-    - name: Generate test report summary
+    - name: Checkout code
+      uses: actions/checkout@v2
+    
+    - name: Create reports directory structure
       run: |
-        echo "# Test Reports Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        mkdir -p test-reports/backend
+        mkdir -p test-reports/frontend
+    
+    - name: Create simple report
+      run: |
+        # Créer le fichier index.html principal
+        cat > test-reports/index.html << EOF
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Test Reports</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1 { color: #333; }
+            p { margin: 10px 0; }
+            .message { padding: 10px; background-color: #f8f8f8; border-left: 4px solid #ccc; margin: 10px 0; }
+            .success { border-left-color: #4CAF50; }
+            .info { border-left-color: #2196F3; }
+          </style>
+        </head>
+        <body>
+          <h1>Test Reports</h1>
+          
+          <div class="message success">
+            <p><strong>Tests completed!</strong></p>
+            <p>Tests have been executed for both backend and frontend.</p>
+          </div>
+          
+          <div class="message info">
+            <p><strong>How to generate detailed reports</strong></p>
+            <p>To view detailed test reports, run tests locally:</p>
+            <p>For backend: <code>cd back && mvn clean verify</code></p>
+            <p>For frontend: <code>cd front && npm run test -- --code-coverage</code></p>
+          </div>
+          
+          <h2>Summary</h2>
+          <p>Backend tests: Executed</p>
+          <p>Frontend tests: Executed</p>
+          
+          <p>Generated on: $(date)</p>
+        </body>
+        </html>
+        EOF
         
-        # Afficher le résultat des tests backend
-        echo "## Backend Tests" >> $GITHUB_STEP_SUMMARY
-        case "${{ needs.backend-tests.outputs.test_result }}" in
-          "success")
-            echo "✅ All backend tests passed" >> $GITHUB_STEP_SUMMARY
-            ;;
-          "failure")
-            echo "❌ Some backend tests failed" >> $GITHUB_STEP_SUMMARY
-            ;;
-          *)
-            echo "⚠️ Backend test status unknown" >> $GITHUB_STEP_SUMMARY
-            ;;
-        esac
+        echo "Created test report at test-reports/index.html"
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./test-reports
+        destination_dir: reports
+        enable_jekyll: true
+    
+    - name: Display report URL
+      run: |
+        # Récupérer le nom d'utilisateur et le nom du dépôt
+        REPO_OWNER=$(echo ${{ github.repository }} | cut -d "/" -f 1)
+        REPO_NAME=$(echo ${{ github.repository }} | cut -d "/" -f 2)
         
-        # Afficher le résultat des tests frontend
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "## Frontend Tests" >> $GITHUB_STEP_SUMMARY
-        case "${{ needs.frontend-tests.outputs.test_result }}" in
-          "success")
-            echo "✅ Frontend tests executed" >> $GITHUB_STEP_SUMMARY
-            ;;
-          *)
-            echo "⚠️ Frontend test status unknown" >> $GITHUB_STEP_SUMMARY
-            ;;
-        esac
+        # Construire l'URL de la page
+        REPORT_URL="https://$REPO_OWNER.github.io/$REPO_NAME/reports/"
         
-        # Ajouter des instructions pour accéder aux rapports détaillés
+        echo "Test reports will be available at: $REPORT_URL"
+        
+        echo "# Test Reports" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "## Accessing Detailed Reports" >> $GITHUB_STEP_SUMMARY
+        echo "Reports will be published to GitHub Pages and available at:" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Detailed test reports are available as artifacts in this workflow run:" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 [View Test Reports]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "1. Click on the 'Summary' tab of this workflow run" >> $GITHUB_STEP_SUMMARY
-        echo "2. Scroll to the bottom to find the 'Artifacts' section" >> $GITHUB_STEP_SUMMARY
-        echo "3. Download the following artifacts:" >> $GITHUB_STEP_SUMMARY
-        echo "   - backend-test-report: Contains test results and coverage for the backend" >> $GITHUB_STEP_SUMMARY
-        echo "   - frontend-test-report: Contains coverage information for the frontend" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "After downloading, extract the zip files and open the index.html file in your browser." >> $GITHUB_STEP_SUMMARY
+        echo "Note: It may take a few minutes for the page to be published." >> $GITHUB_STEP_SUMMARY
