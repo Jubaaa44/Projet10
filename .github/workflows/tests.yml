@@ -25,15 +25,16 @@ jobs:
         mvn clean install
         mvn clean verify
     
-    # Archiver les rapports de test backend
-    - name: Archive backend test reports
-      uses: actions/upload-artifact@v2
+    # Création d'une archive des rapports
+    - name: Create backend test report archive
       if: always()
-      with:
-        name: backend-test-reports
-        path: |
-          back/target/surefire-reports/
-          back/target/site/jacoco/
+      run: |
+        mkdir -p test-reports
+        cp -r back/target/surefire-reports test-reports/ || echo "No surefire reports found"
+        cp -r back/target/site/jacoco test-reports/ || echo "No JaCoCo reports found"
+        tar -czf backend-test-reports.tar.gz test-reports
+        echo "Backend test reports archived in backend-test-reports.tar.gz"
+        ls -la *.tar.gz
   
   frontend-tests:
     name: Frontend Tests
@@ -47,7 +48,6 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-        # Suppression de l'option cache pour éviter les erreurs 422
     
     - name: Install Chrome for Karma tests
       uses: browser-actions/setup-chrome@latest
@@ -58,11 +58,12 @@ jobs:
         npm install
         npm run test -- --no-watch --browsers=ChromeHeadless
     
-    # Archiver les rapports de test frontend
-    - name: Archive frontend test reports
-      uses: actions/upload-artifact@v2
+    # Création d'une archive des rapports
+    - name: Create frontend test report archive
       if: always()
-      with:
-        name: frontend-test-reports
-        path: |
-          front/coverage/
+      run: |
+        mkdir -p test-reports
+        cp -r front/coverage test-reports/ || echo "No coverage reports found"
+        tar -czf frontend-test-reports.tar.gz test-reports
+        echo "Frontend test reports archived in frontend-test-reports.tar.gz"
+        ls -la *.tar.gz
