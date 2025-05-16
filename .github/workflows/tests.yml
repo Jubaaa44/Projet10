@@ -2,12 +2,21 @@ name: Exécution Tests
 
 on:
   workflow_call:
+    outputs:
+      backend_report_url:
+        description: "URL du rapport de tests backend"
+        value: ${{ jobs.backend-tests.outputs.report_url }}
+      frontend_report_url:
+        description: "URL du rapport de tests frontend"
+        value: ${{ jobs.frontend-tests.outputs.report_url }}
   workflow_dispatch:
 
 jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
+    outputs:
+      report_url: ${{ steps.upload.outputs.report_url }}
     
     steps:
     - name: Checkout code
@@ -29,16 +38,70 @@ jobs:
     - name: Create backend test report archive
       if: always()
       run: |
-        mkdir -p test-reports
-        cp -r back/target/surefire-reports test-reports/ || echo "No surefire reports found"
-        cp -r back/target/site/jacoco test-reports/ || echo "No JaCoCo reports found"
-        tar -czf backend-test-reports.tar.gz test-reports
+        mkdir -p test-reports/backend
+        cp -r back/target/surefire-reports test-reports/backend/ || echo "No surefire reports found"
+        cp -r back/target/site/jacoco test-reports/backend/ || echo "No JaCoCo reports found"
+        
+        # Création d'un fichier HTML de résumé simple
+        echo "<html><head><title>Backend Test Report</title></head><body>" > test-reports/backend/index.html
+        echo "<h1>Backend Test Report</h1>" >> test-reports/backend/index.html
+        echo "<p>Date: $(date)</p>" >> test-reports/backend/index.html
+        
+        if [ -d "back/target/surefire-reports" ]; then
+          echo "<h2>Test Results</h2>" >> test-reports/backend/index.html
+          echo "<ul>" >> test-reports/backend/index.html
+          for file in back/target/surefire-reports/*.xml; do
+            if [ -f "$file" ]; then
+              TEST_CLASS=$(grep "testcase" "$file" | head -1 | sed -E 's/.*classname="([^"]+)".*/\1/')
+              FAILURES=$(grep -c "<failure" "$file" || echo "0")
+              if [ "$FAILURES" -eq "0" ]; then
+                echo "<li>$TEST_CLASS: ✅ All tests passed</li>" >> test-reports/backend/index.html
+              else
+                echo "<li>$TEST_CLASS: ❌ $FAILURES failures</li>" >> test-reports/backend/index.html
+              fi
+            fi
+          done
+          echo "</ul>" >> test-reports/backend/index.html
+        fi
+        
+        if [ -f "back/target/site/jacoco/index.html" ]; then
+          echo "<h2>Coverage Report</h2>" >> test-reports/backend/index.html
+          echo "<p><a href='jacoco/index.html'>View JaCoCo Coverage Report</a></p>" >> test-reports/backend/index.html
+        fi
+        
+        echo "</body></html>" >> test-reports/backend/index.html
+        
+        # Compression de l'archive
+        cd test-reports
+        tar -czf ../backend-test-reports.tar.gz backend
+        cd ..
         echo "Backend test reports archived in backend-test-reports.tar.gz"
-        ls -la *.tar.gz
+    
+    # Téléversement vers un service de stockage temporaire
+    - name: Upload backend report to file.io
+      id: upload
+      if: always()
+      run: |
+        # Téléverser l'archive vers file.io (service de stockage temporaire gratuit)
+        RESPONSE=$(curl -F "file=@backend-test-reports.tar.gz" https://file.io)
+        echo "Response: $RESPONSE"
+        
+        # Extraire l'URL du fichier de la réponse JSON
+        URL=$(echo $RESPONSE | grep -o '"link":"[^"]*"' | sed 's/"link":"//;s/"//')
+        
+        if [ -n "$URL" ]; then
+          echo "Download URL: $URL"
+          echo "report_url=$URL" >> $GITHUB_OUTPUT
+        else
+          echo "Failed to upload file."
+          echo "report_url=NOT_AVAILABLE" >> $GITHUB_OUTPUT
+        fi
   
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
+    outputs:
+      report_url: ${{ steps.upload.outputs.report_url }}
     
     steps:
     - name: Checkout code
@@ -62,8 +125,43 @@ jobs:
     - name: Create frontend test report archive
       if: always()
       run: |
-        mkdir -p test-reports
-        cp -r front/coverage test-reports/ || echo "No coverage reports found"
-        tar -czf frontend-test-reports.tar.gz test-reports
+        mkdir -p test-reports/frontend
+        cp -r front/coverage test-reports/frontend/ || echo "No coverage reports found"
+        
+        # Création d'un fichier HTML de résumé simple
+        echo "<html><head><title>Frontend Test Report</title></head><body>" > test-reports/frontend/index.html
+        echo "<h1>Frontend Test Report</h1>" >> test-reports/frontend/index.html
+        echo "<p>Date: $(date)</p>" >> test-reports/frontend/index.html
+        
+        if [ -d "front/coverage" ]; then
+          echo "<h2>Coverage Report</h2>" >> test-reports/frontend/index.html
+          echo "<p><a href='coverage/index.html'>View Coverage Report</a></p>" >> test-reports/frontend/index.html
+        fi
+        
+        echo "</body></html>" >> test-reports/frontend/index.html
+        
+        # Compression de l'archive
+        cd test-reports
+        tar -czf ../frontend-test-reports.tar.gz frontend
+        cd ..
         echo "Frontend test reports archived in frontend-test-reports.tar.gz"
-        ls -la *.tar.gz
+    
+    # Téléversement vers un service de stockage temporaire
+    - name: Upload frontend report to file.io
+      id: upload
+      if: always()
+      run: |
+        # Téléverser l'archive vers file.io (service de stockage temporaire gratuit)
+        RESPONSE=$(curl -F "file=@frontend-test-reports.tar.gz" https://file.io)
+        echo "Response: $RESPONSE"
+        
+        # Extraire l'URL du fichier de la réponse JSON
+        URL=$(echo $RESPONSE | grep -o '"link":"[^"]*"' | sed 's/"link":"//;s/"//')
+        
+        if [ -n "$URL" ]; then
+          echo "Download URL: $URL"
+          echo "report_url=$URL" >> $GITHUB_OUTPUT
+        else
+          echo "Failed to upload file."
+          echo "report_url=NOT_AVAILABLE" >> $GITHUB_OUTPUT
+        fi

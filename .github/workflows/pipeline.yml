@@ -11,10 +11,28 @@ jobs:
   tests:
     name: Run Tests
     uses: ./.github/workflows/tests.yml
+    # Récupérer les outputs du workflow de tests
+    
+  report-links:
+    name: Test Report Links
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display report links
+        run: |
+          echo "Backend Test Report: ${{ needs.tests.outputs.backend_report_url }}"
+          echo "Frontend Test Report: ${{ needs.tests.outputs.frontend_report_url }}"
+          
+          echo "### Test Reports 📊" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Backend Test Report](${{ needs.tests.outputs.backend_report_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Frontend Test Report](${{ needs.tests.outputs.frontend_report_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Note**: These links are temporary and will expire after 14 days." >> $GITHUB_STEP_SUMMARY
 
   quality:
     name: Quality Analysis
-    needs: tests
+    needs: [tests, report-links]
     uses: ./.github/workflows/sonar.yml
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
