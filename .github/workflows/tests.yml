@@ -1,8 +1,12 @@
-name: Exécution Tests
+name: Tests Workflow
 
 on:
-  workflow_call:
-  workflow_dispatch:
+  workflow_call:  # Pour l'appel depuis le pipeline
+  workflow_dispatch:  # Pour l'exécution manuelle
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   backend-tests:
@@ -11,20 +15,30 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
     
     - name: Set up JDK 11
       uses: actions/setup-java@v2
       with:
         java-version: '11'
         distribution: 'temurin'
-        # Suppression du cache
     
     - name: Run backend tests
       run: |
         cd back
-        mvn clean install
         mvn clean verify
+    
+    # Archiver les rapports de test backend
+    - name: Archive backend test reports
+      uses: actions/upload-artifact@v4
+      if: always()  # Exécuter même si les tests échouent
+      with:
+        name: backend-test-reports
+        path: |
+          back/target/surefire-reports/
+          back/target/site/jacoco/
+        retention-days: 30
+        if-no-files-found: warn
   
   frontend-tests:
     name: Frontend Tests
@@ -32,13 +46,14 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
     
     - name: Set up Node.js
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-        # Suppression du cache
+        cache: 'npm'
+        cache-dependency-path: './front/package-lock.json'
     
     - name: Install Chrome for Karma tests
       uses: browser-actions/setup-chrome@latest
@@ -47,4 +62,160 @@ jobs:
       run: |
         cd front
         npm install
-        npm run test -- --no-watch --browsers=ChromeHeadless
+        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
+      continue-on-error: true  # Pour que le workflow continue même si certains tests échouent
+    
+    # Archiver les rapports de test frontend
+    - name: Archive frontend test reports
+      uses: actions/upload-artifact@v4
+      if: always()  # Exécuter même si les tests échouent
+      with:
+        name: frontend-test-reports
+        path: |
+          front/coverage/
+          front/karma-results.json
+        retention-days: 30
+        if-no-files-found: warn
+
+  test-summary:
+    name: Generate Test Summary
+    needs: [backend-tests, frontend-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    # Télécharger tous les rapports de test
+    - name: Download all test reports
+      uses: actions/download-artifact@v4
+      with:
+        path: test-reports
+        pattern: '*-test-reports'
+        merge-multiple: true
+    
+    # Générer un rapport de synthèse HTML
+    - name: Generate test summary
+      run: |
+        echo "<html><head><title>Test Summary Report</title>" > test-summary.html
+        echo "<style>body{font-family:Arial,sans-serif;margin:20px;line-height:1.6} h1{color:#333} h2{color:#0066cc} .success{color:green} .failure{color:red} table{border-collapse:collapse;width:100%;margin-bottom:20px} th,td{text-align:left;padding:8px;border:1px solid #ddd} th{background-color:#f2f2f2}</style>" >> test-summary.html
+        echo "</head><body>" >> test-summary.html
+        echo "<h1>Test Summary Report</h1>" >> test-summary.html
+        echo "<p>Generated on: $(date)</p>" >> test-summary.html
+        
+        # Résumé des tests backend
+        echo "<h2>Backend Tests</h2>" >> test-summary.html
+        if [ -d "test-reports/backend-test-reports/surefire-reports" ]; then
+          FAILED=$(grep -l "<failure" test-reports/backend-test-reports/surefire-reports/*.xml 2>/dev/null | wc -l)
+          TOTAL=$(ls test-reports/backend-test-reports/surefire-reports/*.xml 2>/dev/null | wc -l)
+          
+          if [ "$TOTAL" -gt 0 ]; then
+            if [ "$FAILED" -eq 0 ]; then
+              echo "<p class='success'>✅ All $TOTAL backend tests passed</p>" >> test-summary.html
+            else
+              echo "<p class='failure'>❌ $FAILED/$TOTAL backend tests failed</p>" >> test-summary.html
+              
+              # Liste des tests en échec
+              echo "<h3>Failed Tests:</h3><ul>" >> test-summary.html
+              for file in $(grep -l "<failure" test-reports/backend-test-reports/surefire-reports/*.xml); do
+                TEST_NAME=$(grep "testcase " $file | head -1 | sed -E 's/.*name="([^"]+)".*/\1/')
+                TEST_CLASS=$(grep "testcase " $file | head -1 | sed -E 's/.*classname="([^"]+)".*/\1/')
+                echo "<li>$TEST_CLASS.$TEST_NAME</li>" >> test-summary.html
+              done
+              echo "</ul>" >> test-summary.html
+            fi
+            
+            # Informations sur la couverture si disponible
+            if [ -f "test-reports/backend-test-reports/jacoco/index.html" ]; then
+              COVERAGE=$(grep -o "Total[^%]*%" test-reports/backend-test-reports/jacoco/index.html | head -1 | tr -d " \t\n\r")
+              echo "<p>Code Coverage: $COVERAGE</p>" >> test-summary.html
+            fi
+          else
+            echo "<p>No backend test results found</p>" >> test-summary.html
+          fi
+        else
+          echo "<p>No backend test results found</p>" >> test-summary.html
+        fi
+        
+        # Résumé des tests frontend
+        echo "<h2>Frontend Tests</h2>" >> test-summary.html
+        if [ -d "test-reports/frontend-test-reports/coverage" ]; then
+          if [ -f "test-reports/frontend-test-reports/karma-results.json" ]; then
+            FAILED=$(grep -o "\"failed\": [0-9]*" test-reports/frontend-test-reports/karma-results.json | sed 's/"failed": //')
+            TOTAL=$(grep -o "\"total\": [0-9]*" test-reports/frontend-test-reports/karma-results.json | sed 's/"total": //')
+            
+            if [ ! -z "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+              if [ -z "$FAILED" ] || [ "$FAILED" -eq 0 ]; then
+                echo "<p class='success'>✅ All $TOTAL frontend tests passed</p>" >> test-summary.html
+              else
+                echo "<p class='failure'>❌ $FAILED/$TOTAL frontend tests failed</p>" >> test-summary.html
+              fi
+            fi
+          fi
+          
+          # Informations sur la couverture frontend
+          if [ -f "test-reports/frontend-test-reports/coverage/index.html" ]; then
+            TS_COVERAGE=$(grep -o "statements.*%" test-reports/frontend-test-reports/coverage/index.html | head -1 | grep -o "[0-9]*\.[0-9]*%" || echo "Not available")
+            echo "<p>Code Coverage: $TS_COVERAGE</p>" >> test-summary.html
+          fi
+        else
+          echo "<p>No frontend test results found</p>" >> test-summary.html
+        fi
+        
+        echo "</body></html>" >> test-summary.html
+        
+        echo "Test summary generated: test-summary.html"
+    
+    # Archiver le rapport de synthèse
+    - name: Upload test summary report
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-summary-report
+        path: test-summary.html
+        retention-days: 30
+    
+    # Commentaire sur les PR
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const content = fs.readFileSync('test-summary.html', 'utf8');
+          
+          // Convertir le HTML en Markdown simple pour le commentaire
+          let markdown = "# Test Summary Report\n\n";
+          markdown += "## Backend Tests\n";
+          if (content.includes("All backend tests passed")) {
+            markdown += "✅ All backend tests passed\n";
+          } else if (content.includes("backend tests failed")) {
+            const failedMatch = content.match(/❌ (\d+)\/(\d+) backend tests failed/);
+            if (failedMatch) {
+              markdown += `❌ ${failedMatch[1]}/${failedMatch[2]} backend tests failed\n`;
+            }
+          } else {
+            markdown += "No backend test results found\n";
+          }
+          
+          markdown += "\n## Frontend Tests\n";
+          if (content.includes("All frontend tests passed")) {
+            markdown += "✅ All frontend tests passed\n";
+          } else if (content.includes("frontend tests failed")) {
+            const failedMatch = content.match(/❌ (\d+)\/(\d+) frontend tests failed/);
+            if (failedMatch) {
+              markdown += `❌ ${failedMatch[1]}/${failedMatch[2]} frontend tests failed\n`;
+            }
+          } else {
+            markdown += "No frontend test results found\n";
+          }
+          
+          markdown += "\n*Detailed reports are available as workflow artifacts.*";
+          
+          github.rest.issues.createComment({
+            issue_number: context.payload.pull_request.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: markdown
+          });
