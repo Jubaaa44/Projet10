@@ -25,116 +25,45 @@ jobs:
         mvn clean install
         mvn clean verify
     
-    # Création des rapports HTML
-    - name: Create backend test reports directory
+    # Création et archivage des rapports de tests backend
+    - name: Prepare backend test reports
       if: always()
       run: |
-        mkdir -p reports/backend
+        mkdir -p test-reports/backend
         
-        # Vérifier si les rapports existent et les copier
+        # Copier les rapports s'ils existent
         if [ -d "back/target/surefire-reports" ]; then
-          cp -r back/target/surefire-reports reports/backend/
-          echo "Copied surefire reports"
-        else
-          echo "No surefire reports found"
+          cp -r back/target/surefire-reports test-reports/backend/
         fi
         
         if [ -d "back/target/site/jacoco" ]; then
-          cp -r back/target/site/jacoco reports/backend/
-          echo "Copied JaCoCo reports"
-        else
-          echo "No JaCoCo reports found"
+          cp -r back/target/site/jacoco test-reports/backend/
         fi
         
-        # Créer un fichier index.html
-        cat > reports/backend/index.html << EOF
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Backend Test Reports</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
-            h1 { color: #333; }
-            h2 { color: #0066cc; margin-top: 20px; }
-            .section { margin-bottom: 30px; }
-            .success { color: green; }
-            .failure { color: red; }
-            a { color: #0066cc; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-          </style>
-        </head>
-        <body>
-          <h1>Backend Test Reports</h1>
-          <p>Generated on: $(date)</p>
-          
-          <div class="section">
-            <h2>Test Results</h2>
-        EOF
+        # Créer un fichier index.html simple
+        echo "<html><head><title>Backend Test Reports</title></head><body>" > test-reports/backend/index.html
+        echo "<h1>Backend Test Reports</h1>" >> test-reports/backend/index.html
         
-        # Ajouter des liens vers les rapports de tests
-        if [ -d "reports/backend/surefire-reports" ]; then
-          echo "<p>Surefire Reports:</p><ul>" >> reports/backend/index.html
-          
-          # Création d'un résumé des tests
-          TOTAL_TESTS=0
-          FAILED_TESTS=0
-          
-          for file in reports/backend/surefire-reports/*.xml; do
-            if [ -f "$file" ]; then
-              TEST_NAME=$(basename "$file" .xml)
-              TEST_CLASS=$(grep "testcase " "$file" | head -1 | sed -E 's/.*classname="([^"]+)".*/\1/' || echo "Unknown")
-              FAILURES=$(grep -c "<failure" "$file" || echo "0")
-              
-              TOTAL_TESTS=$((TOTAL_TESTS+1))
-              
-              if [ "$FAILURES" -eq "0" ]; then
-                echo "<li class='success'>$TEST_CLASS: ✅ Passed</li>" >> reports/backend/index.html
-              else
-                FAILED_TESTS=$((FAILED_TESTS+FAILURES))
-                echo "<li class='failure'>$TEST_CLASS: ❌ Failed ($FAILURES failures)</li>" >> reports/backend/index.html
-              fi
-            fi
-          done
-          
-          echo "</ul>" >> reports/backend/index.html
-          
-          # Afficher le résumé global
-          echo "<p>Summary: " >> reports/backend/index.html
-          if [ "$FAILED_TESTS" -eq "0" ]; then
-            echo "<span class='success'>All tests passed</span>" >> reports/backend/index.html
-          else
-            echo "<span class='failure'>$FAILED_TESTS failures detected</span>" >> reports/backend/index.html
-          fi
-          echo "</p>" >> reports/backend/index.html
-        else
-          echo "<p>No test reports available</p>" >> reports/backend/index.html
+        if [ -d "test-reports/backend/surefire-reports" ]; then
+          echo "<h2>Test Results</h2><p><a href='surefire-reports'>View Test Results</a></p>" >> test-reports/backend/index.html
         fi
         
-        # Ajouter des liens vers les rapports de couverture
-        echo "<h2>Coverage Reports</h2>" >> reports/backend/index.html
-        if [ -d "reports/backend/jacoco" ]; then
-          echo "<p><a href='jacoco/index.html'>JaCoCo Coverage Report</a></p>" >> reports/backend/index.html
-        else
-          echo "<p>No coverage reports available</p>" >> reports/backend/index.html
+        if [ -d "test-reports/backend/jacoco" ]; then
+          echo "<h2>Coverage Report</h2><p><a href='jacoco/index.html'>View Coverage Report</a></p>" >> test-reports/backend/index.html
         fi
         
-        echo "</div></body></html>" >> reports/backend/index.html
+        echo "</body></html>" >> test-reports/backend/index.html
         
-        echo "Backend test report HTML created at reports/backend/index.html"
+        # Créer une archive zip pour GitHub Actions
+        cd test-reports
+        zip -r ../backend-test-reports.zip backend
+        cd ..
     
-    # Télécharger les rapports en local
-    - name: Save backend test reports
+    # Téléverser l'archive en tant qu'artefact GitHub
+    - name: Upload backend test reports
       if: always()
       run: |
-        # Créer une archive des rapports
-        cd reports
-        tar -czf ../backend-test-reports.tar.gz backend
-        cd ..
-        
-        # Afficher le chemin pour téléchargement
-        echo "Backend test reports archived in backend-test-reports.tar.gz"
-        echo "To access the reports, you can download this file and extract it locally."
-        echo "Then open index.html in your browser."
+        echo "::upload-artifact name=backend-test-reports::backend-test-reports.zip"
   
   frontend-tests:
     name: Frontend Tests
@@ -158,141 +87,62 @@ jobs:
         npm install
         npm run test -- --no-watch --browsers=ChromeHeadless
     
-    # Création des rapports HTML
-    - name: Create frontend test reports directory
+    # Création et archivage des rapports de tests frontend
+    - name: Prepare frontend test reports
       if: always()
       run: |
-        mkdir -p reports/frontend
+        mkdir -p test-reports/frontend
         
-        # Vérifier si les rapports existent et les copier
+        # Copier les rapports s'ils existent
         if [ -d "front/coverage" ]; then
-          cp -r front/coverage reports/frontend/
-          echo "Copied coverage reports"
-        else
-          echo "No coverage reports found"
+          cp -r front/coverage test-reports/frontend/
         fi
         
-        # Créer un fichier index.html
-        cat > reports/frontend/index.html << EOF
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Frontend Test Reports</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
-            h1 { color: #333; }
-            h2 { color: #0066cc; margin-top: 20px; }
-            .section { margin-bottom: 30px; }
-            a { color: #0066cc; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-          </style>
-        </head>
-        <body>
-          <h1>Frontend Test Reports</h1>
-          <p>Generated on: $(date)</p>
-          
-          <div class="section">
-            <h2>Coverage Report</h2>
-        EOF
+        # Créer un fichier index.html simple
+        echo "<html><head><title>Frontend Test Reports</title></head><body>" > test-reports/frontend/index.html
+        echo "<h1>Frontend Test Reports</h1>" >> test-reports/frontend/index.html
         
-        # Ajouter des liens vers les rapports de couverture
-        if [ -d "reports/frontend/coverage" ]; then
-          echo "<p><a href='coverage/index.html'>Angular Coverage Report</a></p>" >> reports/frontend/index.html
-        else
-          echo "<p>No coverage reports available</p>" >> reports/frontend/index.html
+        if [ -d "test-reports/frontend/coverage" ]; then
+          echo "<h2>Coverage Report</h2><p><a href='coverage/index.html'>View Coverage Report</a></p>" >> test-reports/frontend/index.html
         fi
         
-        echo "</div></body></html>" >> reports/frontend/index.html
+        echo "</body></html>" >> test-reports/frontend/index.html
         
-        echo "Frontend test report HTML created at reports/frontend/index.html"
+        # Créer une archive zip pour GitHub Actions
+        cd test-reports
+        zip -r ../frontend-test-reports.zip frontend
+        cd ..
     
-    # Télécharger les rapports en local
-    - name: Save frontend test reports
+    # Téléverser l'archive en tant qu'artefact GitHub
+    - name: Upload frontend test reports
       if: always()
       run: |
-        # Créer une archive des rapports
-        cd reports
-        tar -czf ../frontend-test-reports.tar.gz frontend
-        cd ..
-        
-        # Afficher le chemin pour téléchargement
-        echo "Frontend test reports archived in frontend-test-reports.tar.gz"
-        echo "To access the reports, you can download this file and extract it locally."
-        echo "Then open index.html in your browser."
+        echo "::upload-artifact name=frontend-test-reports::frontend-test-reports.zip"
 
-  publish-reports:
-    name: Generate Combined Report
+  generate-summary:
+    name: Generate Report Summary
     needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
     if: always()
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    
-    - name: Create reports directory
+    - name: Generate summary
       run: |
-        mkdir -p reports
-        
-        # Créer un fichier index.html pour la racine
-        cat > reports/index.html << EOF
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Test Reports</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
-            h1 { color: #333; }
-            h2 { color: #0066cc; margin-top: 20px; }
-            .report-link { 
-              display: inline-block; 
-              margin: 10px; 
-              padding: 15px 25px; 
-              background-color: #0066cc; 
-              color: white; 
-              text-decoration: none;
-              border-radius: 5px;
-            }
-            .report-link:hover { background-color: #004b99; }
-          </style>
-        </head>
-        <body>
-          <h1>Test Reports</h1>
-          <p>These reports provide details about the test execution results.</p>
-          
-          <h2>Available Reports</h2>
-          <a class="report-link" href="backend/index.html">Backend Test Report</a>
-          <a class="report-link" href="frontend/index.html">Frontend Test Report</a>
-          
-          <h2>About These Reports</h2>
-          <p>These reports are generated automatically during the CI/CD pipeline execution.</p>
-          <p>Last updated: $(date)</p>
-        </body>
-        </html>
-        EOF
-        
-        echo "Created combined report index at reports/index.html"
-    
-    - name: Create report instructions
-      run: |
-        echo "**Test Reports**" >> $GITHUB_STEP_SUMMARY
+        echo "# Test Reports" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Due to limitations with GitHub Actions, test reports need to be downloaded and viewed locally." >> $GITHUB_STEP_SUMMARY
+        echo "The test reports are available as artifacts in this workflow run." >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Instructions:**" >> $GITHUB_STEP_SUMMARY
+        echo "## How to access the reports" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "1. In this workflow run, look for the steps:" >> $GITHUB_STEP_SUMMARY
-        echo "   - 'Save backend test reports'" >> $GITHUB_STEP_SUMMARY
-        echo "   - 'Save frontend test reports'" >> $GITHUB_STEP_SUMMARY
-        echo "2. Expand these steps to see the console output" >> $GITHUB_STEP_SUMMARY
-        echo "3. At the end of each step, it will mention 'archived in X-test-reports.tar.gz'" >> $GITHUB_STEP_SUMMARY
-        echo "4. Copy the commands that create these archives and run them locally after running your tests" >> $GITHUB_STEP_SUMMARY
-        echo "5. Extract the .tar.gz files and open the index.html in your browser" >> $GITHUB_STEP_SUMMARY
+        echo "1. Go to the 'Summary' tab of this workflow run" >> $GITHUB_STEP_SUMMARY
+        echo "2. Scroll down to the 'Artifacts' section" >> $GITHUB_STEP_SUMMARY
+        echo "3. Download the following artifacts:" >> $GITHUB_STEP_SUMMARY
+        echo "   - backend-test-reports.zip" >> $GITHUB_STEP_SUMMARY
+        echo "   - frontend-test-reports.zip" >> $GITHUB_STEP_SUMMARY
+        echo "4. Extract the zip files locally" >> $GITHUB_STEP_SUMMARY
+        echo "5. Open the 'index.html' file in your browser" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Example commands to run locally:" >> $GITHUB_STEP_SUMMARY
-        echo "```bash" >> $GITHUB_STEP_SUMMARY
-        echo "mkdir -p reports/backend reports/frontend" >> $GITHUB_STEP_SUMMARY
-        echo "cp -r back/target/surefire-reports back/target/site/jacoco reports/backend/" >> $GITHUB_STEP_SUMMARY
-        echo "cp -r front/coverage reports/frontend/" >> $GITHUB_STEP_SUMMARY
-        echo "# Then create the index.html files as shown in this workflow" >> $GITHUB_STEP_SUMMARY
-        echo "```" >> $GITHUB_STEP_SUMMARY
+        echo "## Direct links (if available)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- [Backend Test Reports](../backend-test-reports/index.html)" >> $GITHUB_STEP_SUMMARY
+        echo "- [Frontend Test Reports](../frontend-test-reports/index.html)" >> $GITHUB_STEP_SUMMARY
