@@ -1,4 +1,4 @@
-name: SonarCloud Analysis
+name: Analyse SonarCloud
 on:
   workflow_call:  # Ajoutez cette section
     secrets:
