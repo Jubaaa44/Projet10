@@ -1,0 +1,82 @@
+name: Docker Hub Deployment
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]  # Déclenche également sur les tags commençant par "v"
+  workflow_dispatch:  # Permet le déclenchement manuel
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Configuration de Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      # Connexion à Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      # Déterminer les tags pour les images
+      - name: Set Docker tags
+        id: docker_tags
+        run: |
+          # Tag de base (nom du dépôt)
+          REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Tag par défaut
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            TAGS="${{ secrets.DOCKERHUB_USERNAME }}/bobapp-front:$VERSION,${{ secrets.DOCKERHUB_USERNAME }}/bobapp-front:latest"
+            BACKEND_TAGS="${{ secrets.DOCKERHUB_USERNAME }}/bobapp-back:$VERSION,${{ secrets.DOCKERHUB_USERNAME }}/bobapp-back:latest"
+          else
+            SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+            TAGS="${{ secrets.DOCKERHUB_USERNAME }}/bobapp-front:$SHA_SHORT,${{ secrets.DOCKERHUB_USERNAME }}/bobapp-front:latest"
+            BACKEND_TAGS="${{ secrets.DOCKERHUB_USERNAME }}/bobapp-back:$SHA_SHORT,${{ secrets.DOCKERHUB_USERNAME }}/bobapp-back:latest"
+          fi
+          
+          echo "frontend_tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "backend_tags=$BACKEND_TAGS" >> $GITHUB_OUTPUT
+          
+          echo "Tags for frontend: $TAGS"
+          echo "Tags for backend: $BACKEND_TAGS"
+      
+      # Build et push de l'image frontend
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./front
+          push: true
+          tags: ${{ steps.docker_tags.outputs.frontend_tags }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/bobapp-front:latest
+          cache-to: type=inline
+      
+      # Build et push de l'image backend
+      - name: Build and push backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./back
+          push: true
+          tags: ${{ steps.docker_tags.outputs.backend_tags }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/bobapp-back:latest
+          cache-to: type=inline
+      
+      # Vérification du déploiement
+      - name: Verify deployment
+        run: |
+          echo "Images successfully pushed to Docker Hub:"
+          echo "Frontend: ${{ steps.docker_tags.outputs.frontend_tags }}"
+          echo "Backend: ${{ steps.docker_tags.outputs.backend_tags }}"
+          
+          echo "Docker Hub repository URLs:"
+          echo "Frontend: https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/bobapp-front/tags"
+          echo "Backend: https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/bobapp-back/tags"
