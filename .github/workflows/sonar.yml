@@ -4,11 +4,6 @@ on:
     secrets:
       SONAR_TOKEN:
         required: true
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:  # Pour permettre l'exécution manuelle
 
 jobs:
