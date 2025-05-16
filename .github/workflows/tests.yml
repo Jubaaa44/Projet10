@@ -18,6 +18,7 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
+        # Suppression du cache
     
     - name: Run backend tests
       run: |
@@ -37,6 +38,7 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: '16'
+        # Suppression du cache
     
     - name: Install Chrome for Karma tests
       uses: browser-actions/setup-chrome@latest
@@ -46,88 +48,3 @@ jobs:
         cd front
         npm install
         npm run test -- --no-watch --browsers=ChromeHeadless
-
-  publish-reports:
-    name: Publish Reports to GitHub Pages
-    needs: [backend-tests, frontend-tests]
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    
-    - name: Create reports directory structure
-      run: |
-        mkdir -p test-reports/backend
-        mkdir -p test-reports/frontend
-    
-    - name: Create simple report
-      run: |
-        # Créer le fichier index.html principal
-        cat > test-reports/index.html << EOF
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Test Reports</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #333; }
-            p { margin: 10px 0; }
-            .message { padding: 10px; background-color: #f8f8f8; border-left: 4px solid #ccc; margin: 10px 0; }
-            .success { border-left-color: #4CAF50; }
-            .info { border-left-color: #2196F3; }
-          </style>
-        </head>
-        <body>
-          <h1>Test Reports</h1>
-          
-          <div class="message success">
-            <p><strong>Tests completed!</strong></p>
-            <p>Tests have been executed for both backend and frontend.</p>
-          </div>
-          
-          <div class="message info">
-            <p><strong>How to generate detailed reports</strong></p>
-            <p>To view detailed test reports, run tests locally:</p>
-            <p>For backend: <code>cd back && mvn clean verify</code></p>
-            <p>For frontend: <code>cd front && npm run test -- --code-coverage</code></p>
-          </div>
-          
-          <h2>Summary</h2>
-          <p>Backend tests: Executed</p>
-          <p>Frontend tests: Executed</p>
-          
-          <p>Generated on: $(date)</p>
-        </body>
-        </html>
-        EOF
-        
-        echo "Created test report at test-reports/index.html"
-    
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./test-reports
-        destination_dir: reports
-        enable_jekyll: true
-    
-    - name: Display report URL
-      run: |
-        # Récupérer le nom d'utilisateur et le nom du dépôt
-        REPO_OWNER=$(echo ${{ github.repository }} | cut -d "/" -f 1)
-        REPO_NAME=$(echo ${{ github.repository }} | cut -d "/" -f 2)
-        
-        # Construire l'URL de la page
-        REPORT_URL="https://$REPO_OWNER.github.io/$REPO_NAME/reports/"
-        
-        echo "Test reports will be available at: $REPORT_URL"
-        
-        echo "# Test Reports" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Reports will be published to GitHub Pages and available at:" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "🔗 [View Test Reports]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Note: It may take a few minutes for the page to be published." >> $GITHUB_STEP_SUMMARY
