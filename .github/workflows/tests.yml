@@ -1,4 +1,4 @@
-name: Tests Workflow
+name: Exécution Tests
 
 on:
   workflow_call:
@@ -48,14 +48,3 @@ jobs:
         cd front
         npm install
         npm run test -- --no-watch --browsers=ChromeHeadless
-
-  # Étape simple pour indiquer que tout est terminé
-  summary:
-    name: Test Summary
-    needs: [backend-tests, frontend-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Tests completed
-      run: echo "All tests have been completed. Check individual job logs for details."
