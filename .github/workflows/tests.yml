@@ -18,13 +18,20 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-        # Suppression du cache
     
     - name: Run backend tests
       run: |
         cd back
         mvn clean install
         mvn clean verify
+        
+    - name: Upload backend coverage report
+      uses: actions/upload-artifact@v3
+      if: success() || failure()  # Upload même en cas d'échec des tests
+      with:
+        name: backend-coverage-report
+        path: back/target/site/jacoco/
+        retention-days: 14
   
   frontend-tests:
     name: Frontend Tests
@@ -38,7 +45,6 @@ jobs:
       uses: actions/setup-node@v2
       with:
         node-version: '16'
-        # Suppression du cache
     
     - name: Install Chrome for Karma tests
       uses: browser-actions/setup-chrome@latest
@@ -47,4 +53,13 @@ jobs:
       run: |
         cd front
         npm install
-        npm run test -- --no-watch --browsers=ChromeHeadless
+        npm run test -- --no-watch --browsers=ChromeHeadless --code-coverage
+    
+    # Ajout de l'étape pour upload les rapports de couverture frontend
+    - name: Upload frontend coverage report
+      uses: actions/upload-artifact@v3
+      if: success() || failure()  # Upload même en cas d'échec des tests
+      with:
+        name: frontend-coverage-report
+        path: front/coverage/bobapp/ 
+        retention-days: 14
