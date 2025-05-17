@@ -26,7 +26,7 @@ jobs:
         mvn clean verify
         
     - name: Upload backend coverage report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       if: success() || failure()  # Upload même en cas d'échec des tests
       with:
         name: backend-coverage-report
@@ -57,7 +57,7 @@ jobs:
     
     # Ajout de l'étape pour upload les rapports de couverture frontend
     - name: Upload frontend coverage report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       if: success() || failure()  # Upload même en cas d'échec des tests
       with:
         name: frontend-coverage-report
