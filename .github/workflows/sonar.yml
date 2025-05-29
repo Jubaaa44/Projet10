@@ -42,8 +42,8 @@ jobs:
           cd front
           npm ci
       
-      # Build du back-end
-      - name: Build back-end
+      # IMPORTANT : Compiler le Java AVANT l'analyse
+      - name: Build and test back-end
         run: |
           cd back
           mvn clean compile test-compile
