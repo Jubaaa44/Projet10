@@ -54,7 +54,7 @@ jobs:
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
       
-      # Analyse du front-end
+     # Analyse du front-end avec une nouvelle clé
       - name: Analyze front-end
         uses: sonarsource/sonarcloud-github-action@master
         env:
