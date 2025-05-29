@@ -1,10 +1,10 @@
 name: Analyse SonarCloud
 on:
-  workflow_call:  # Ajoutez cette section
+  workflow_call:
     secrets:
       SONAR_TOKEN:
         required: true
-  workflow_dispatch:  # Pour permettre l'exécution manuelle
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          fetch-depth: 0
       
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -21,20 +21,44 @@ jobs:
           java-version: 17
           distribution: 'zulu'
       
+      # Configuration Node.js pour le front-end
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+      
       - name: Verify token availability
         run: |
           if [ -n "${{ secrets.SONAR_TOKEN }}" ]; then
             echo "✅ SONAR_TOKEN is configured correctly"
           else
             echo "❌ SONAR_TOKEN is NOT configured"
-            exit 1  # Cette ligne arrêtera le workflow si le token n'est pas configuré
+            exit 1
           fi
       
-      - name: Build and analyze
+      # Installation des dépendances front-end
+      - name: Install front-end dependencies
+        run: |
+          cd front
+          npm ci
+      
+      # Analyse du back-end
+      - name: Build and analyze back-end
         run: |
           cd back
           mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-            -Dsonar.projectKey=Jubaaa44_Projet10 \
+            -Dsonar.projectKey=Jubaaa44 \
             -Dsonar.organization=projet10 \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
+      
+      # Analyse du front-end
+      - name: Analyze front-end
+        uses: sonarsource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: front
